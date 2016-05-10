@@ -84,6 +84,35 @@ public class FormSubmissionController {
         });
     }
     
+    
+    @RequestMapping(method = GET, value="/formsubmission-parser")
+    public ResponseEntity<HttpStatus> getAllForms(@RequestParam("timestamp") Long timeStamp,
+            @RequestParam(value = "batch-size", required = false)
+            Integer batchSize) {  	
+
+        List<FormSubmission> allSubmissions = formSubmissionService
+                .getAllSubmissions(timeStamp, batchSize);
+        
+        List<FormSubmissionDTO> formSubmissionsDTO = with(allSubmissions).convert(new Converter<FormSubmission, FormSubmissionDTO>() {
+            @Override
+            public FormSubmissionDTO convert(FormSubmission submission) {
+                return FormSubmissionConverter.from(submission);
+            }
+        });
+    
+        try {
+            if (formSubmissionsDTO.isEmpty()) {
+                return new ResponseEntity<>(BAD_REQUEST);
+            }
+            scheduler.notifyEvent(new SystemEvent<>(AllConstants.OpenSRPEvent.FORM_SUBMISSION, formSubmissionsDTO));            
+            logger.debug(format("Added Form submissions to queue.\nSubmissions: {0}", formSubmissionsDTO));
+        } catch (Exception e) {
+            logger.error(format("Form submissions processing failed with exception {0}.\nSubmissions: {1}", e, formSubmissionsDTO));
+            return new ResponseEntity<>(INTERNAL_SERVER_ERROR);
+        }
+        
+        return new ResponseEntity<>(CREATED, HttpStatus.OK);
+    }
  
 
     @RequestMapping(headers = {"Accept=application/json"}, method = POST, value = "/form-submissions")
